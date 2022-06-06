@@ -349,6 +349,7 @@ namespace ldso {
          * @param printOptimized
          */
         void printResultKitti(const string &filename, bool printOptimized = true);
+		void printResultMap(const string &filename, bool printOptimized = true);
     };
 
 }

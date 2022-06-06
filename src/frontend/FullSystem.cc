@@ -1979,4 +1979,25 @@ namespace ldso {
 
         LOG(INFO) << "done." << endl;
     }
+	void FullSystem::printResultMap(const string &filename, bool printOptimized) {
+		LOG(INFO) << "saving map..." << endl;
+		unique_lock<mutex> lock(trackMutex);
+		unique_lock<mutex> crlock(shellPoseMutex);
+		ofstream f(filename);
+		
+		auto allKFs = globalMap->GetAllKFs();
+		for (auto &fr: allKFs) {
+			if (printOptimized == false) {
+			} else {
+				auto allPoints = fr->GetPoints();
+				for (auto &p: allPoints){
+					auto point = p->mWorldPos;
+					f << point[0] << " " << point[1] << " " << point[2] << "\n";
+				}
+			}
+		}
+		f.close();
+
+		LOG(INFO) << "saving map done." << endl;
+	}
 }
