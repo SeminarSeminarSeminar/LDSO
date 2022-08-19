@@ -79,22 +79,26 @@ namespace ldso {
 
         // ==== make images ==== //
         shared_ptr<FrameHessian> fh = frame->frameHessian;
-        fh->ab_exposure = image->exposure_time;
+		fh->ab_exposure = image->exposure_time;
         fh->makeImages(image->image, Hcalib->mpCH);
+		std::cout << "fh exposure " << fh->ab_exposure << "\n";
 
         if (!initialized) {
             LOG(INFO) << "Initializing ... " << endl;
             // use initializer
             if (coarseInitializer->frameID < 0) {   // first frame not set, set it
                 coarseInitializer->setFirst(Hcalib->mpCH, fh);
+				std::cout << "set first frame\n";
             } else if (coarseInitializer->trackFrame(fh)) {
                 // init succeeded
+				std::cout << "track frame\n";
                 initializeFromInitializer(fh);
                 lock.unlock();
                 deliverTrackedFrame(fh, true);  // create new keyframe
                 LOG(INFO) << "init success." << endl;
             } else {
                 // still initializing
+				std::cout << "Still Initializting\n"; 
                 frame->poseValid = false;
                 frame->ReleaseAll();        // don't need this frame, release all the internal
             }
@@ -112,7 +116,10 @@ namespace ldso {
 
             // track the new frame and get the state
             LOG(INFO) << "tracking new frame" << endl;
+			std::cout << "tracking new frame" << fh->frame->getPose().matrix() << "\n";
             Vec4 tres = trackNewCoarse(fh);
+			std::cout << "tracked new frame" << fh->frame->getPose().matrix() << "\n";
+
 
             if (!std::isfinite((double) tres[0]) || !std::isfinite((double) tres[1]) ||
                 !std::isfinite((double) tres[2]) || !std::isfinite((double) tres[3])) {
@@ -125,10 +132,17 @@ namespace ldso {
             bool needToMakeKF = false;
             if (setting_keyframesPerSecond > 0) {
                 // make key frame by time
+				std::cout << "setting keyframePerSecond\n" ;
                 needToMakeKF = allFrameHistory.size() == 1 ||
                                (frame->timeStamp - frames.back()->timeStamp) >
                                0.95f / setting_keyframesPerSecond;
             } else {
+				std::cout << "fromToVecExposure\n" ;
+				std::cout << "from exposure " << coarseTracker->lastRef->ab_exposure << "\n";
+				std::cout << "to exposure " << fh->ab_exposure << "\n";
+				std::cout << "from g2l " << coarseTracker->lastRef_aff_g2l.a << " " << coarseTracker->lastRef_aff_g2l.b << "\n";
+				std::cout << "to g2l " << fh->aff_g2l().a << " " << fh->aff_g2l().b << "\n";
+
                 Vec2 refToFh = AffLight::fromToVecExposure(coarseTracker->lastRef->ab_exposure, fh->ab_exposure,
                                                            coarseTracker->lastRef_aff_g2l, fh->aff_g2l());
 
@@ -146,8 +160,9 @@ namespace ldso {
                 needToMakeKF = allFrameHistory.size() == 1 || b1 || b2;
             }
 
-            if (viewer)
+            if (viewer){
                 viewer->publishCamPose(fh->frame, Hcalib->mpCH);
+			}
 
             lock.unlock();
             LOG(INFO) << "deliver frame " << fh->frame->id << endl;
@@ -160,8 +175,10 @@ namespace ldso {
     void FullSystem::deliverTrackedFrame(shared_ptr<FrameHessian> fh, bool needKF) {
         if (linearizeOperation) {
             if (needKF) {
+				std::cout << "makeKeyFrame\n";
                 makeKeyFrame(fh);
             } else {
+				std::cout  << "notKeyFrame\n";
                 makeNonKeyFrame(fh);
             }
         } else {
@@ -188,11 +205,11 @@ namespace ldso {
         // try a lot of pose values and see which is the best
         std::vector<SE3, Eigen::aligned_allocator<SE3>>
             lastF_2_fh_tries;
-        if (allFrameHistory.size() == 2)
+        if (allFrameHistory.size() == 2){
             for (unsigned int i = 0; i < lastF_2_fh_tries.size(); i++)  // TODO: maybe wrong, size is obviously zero
-                lastF_2_fh_tries.push_back(SE3());  // use identity
+				lastF_2_fh_tries.push_back(SE3());  // use identity
+		}
         else {
-
             // fill the pose tries ...
             // use the last before last and the last before before last (well my English is really poor...)
             shared_ptr<Frame> slast = allFrameHistory[allFrameHistory.size() - 2];
@@ -203,8 +220,8 @@ namespace ldso {
 
             {    // lock on global pose consistency!
                 unique_lock<mutex> crlock(shellPoseMutex);
-                slast_2_sprelast = sprelast->getPose() * slast->getPose().inverse();
-                lastF_2_slast = slast->getPose() * lastF->frame->getPose().inverse();
+                slast_2_sprelast = sprelast->getPose() * slast->getPose().inverse();  // slast to world -> world to sprelast 
+                lastF_2_slast = slast->getPose() * lastF->frame->getPose().inverse(); // lastF to world -> world to slast 
                 aff_last_2_l = slast->aff_g2l;
             }
             SE3 fh_2_slast = slast_2_sprelast;// assumed to be the same as fh_2_slast.
@@ -1984,7 +2001,8 @@ namespace ldso {
 		unique_lock<mutex> lock(trackMutex);
 		unique_lock<mutex> crlock(shellPoseMutex);
 		ofstream f(filename);
-		
+		int pointNum = 0;
+		int margPointNum = 0;
 		auto allKFs = globalMap->GetAllKFs();
 		for (auto &fr: allKFs) {
 			if (printOptimized == false) {
@@ -1992,7 +2010,32 @@ namespace ldso {
 				auto allPoints = fr->GetPoints();
 				for (auto &p: allPoints){
 					auto point = p->mWorldPos;
-					f << point[0] << " " << point[1] << " " << point[2] << "\n";
+					if(p->status == Point::PointStatus::MARGINALIZED){
+						f << point[0] << " " << point[1] << " " << point[2] << "\n";
+						margPointNum++;
+					}
+					pointNum++;
+				}
+			}
+		}
+		cout << "marginalized Points: " << margPointNum << " Points: " << pointNum << "\n";
+		f.close();
+
+		LOG(INFO) << "saving map done." << endl;
+	}
+	void FullSystem::printResultMap2(const string &filename, bool printOptimized) {
+		LOG(INFO) << "saving map..." << endl;
+		unique_lock<mutex> lock(trackMutex);
+		unique_lock<mutex> crlock(shellPoseMutex);
+		ofstream f(filename);
+		
+		auto allKFs = globalMap->GetAllKFs();
+		for (auto &fr: allKFs) {
+			if (printOptimized == false) {
+			} else {
+				auto allFeatures = fr->features;
+				for (auto &feat : allFeatures){
+					feat->save(f);					
 				}
 			}
 		}
