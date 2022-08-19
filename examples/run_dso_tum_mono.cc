@@ -431,7 +431,8 @@ int main(int argc, char **argv) {
 
         fullSystem->printResult(output_file, true);
         fullSystem->printResult(output_file + ".noloop", false);
-
+        fullSystem->printResultMap("map.pcd", true);
+	
         int numFramesProcessed = abs(idsToPlay[0] - idsToPlay.back());
         double numSecondsProcessed = fabs(reader->getTimestamp(idsToPlay[0]) - reader->getTimestamp(idsToPlay.back()));
         double MilliSecondsTakenSingle = 1000.0f * (ended - started) / (float) (CLOCKS_PER_SEC);
@@ -464,7 +465,7 @@ int main(int argc, char **argv) {
         viewer->run();  // mac os should keep this in main thread.
 
     runthread.join();
-
+	LOG(INFO) << "PLY?\n"; 
     viewer->saveAsPLYFile("./pointcloud.ply");
     LOG(INFO) << "EXIT NOW!";
     return 0;

@@ -12,3 +12,7 @@ target_link_libraries( run_dso_euroc
 add_executable( run_dso_kitti run_dso_kitti.cc )
 target_link_libraries( run_dso_kitti
   ldso ${THIRD_PARTY_LIBS} )
+
+add_executable( run_test run_test.cc )
+target_link_libraries( run_test
+  ldso ${THIRD_PARTY_LIBS} )

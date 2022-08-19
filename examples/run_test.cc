@@ -255,18 +255,11 @@ void parseArgument(char *arg) {
 }
 
 int main(int argc, char **argv) {
-
     FLAGS_colorlogtostderr = true;
 	FLAGS_minloglevel = 100;
     setting_maxAffineWeight = 0.1;
-    // check setting conflicts
-    if (setting_enableLoopClosing && (setting_pointSelection != 1)) {
-        LOG(ERROR) << "Loop closing is enabled but point selection strategy is not set to LDSO, "
-                      "use setting_pointSelection=1! please!" << endl;
-        exit(-1);
-    }
 
-    for (int i = 1; i < argc; i++)
+	for (int i = 1; i < argc; i++)
         parseArgument(argv[i]);
 
     // Kitti has no photometric calibration
@@ -275,33 +268,26 @@ int main(int argc, char **argv) {
     setting_affineOptModeA = 0; //-1: fix. >=0: optimize (with prior, if > 0).
     setting_affineOptModeB = 0; //-1: fix. >=0: optimize (with prior, if > 0).
 
+
     shared_ptr<ImageFolderReader> reader(
             new ImageFolderReader(ImageFolderReader::KITTI, source, calib, "", ""));    // no gamma and vignette
-
     reader->setGlobalCalibration();
 
     int lstart = startIdx;
     int lend = endIdx;
     int linc = 1;
 
-    if (reversePlay) {
-        LOG(INFO) << "REVERSE!!!!";
-        lstart = endIdx - 1;
-        if (lstart >= reader->getNumImages())
-            lstart = reader->getNumImages() - 1;
-        lend = startIdx;
-        linc = -1;
-    }
-
+    // Load Vocabulary -- this will be used for loop detection
     shared_ptr<ORBVocabulary> voc(new ORBVocabulary());
     voc->load(vocPath);
 
     shared_ptr<FullSystem> fullSystem(new FullSystem(voc));
     fullSystem->setGammaFunction(reader->getPhotometricGamma());
-    fullSystem->linearizeOperation = (playbackSpeed == 0);
-	std::cout << "linearizeOperation:" << fullSystem->linearizeOperation << "\n";
-    shared_ptr<PangolinDSOViewer> viewer = nullptr;
-    if (!disableAllDisplay) {
+    fullSystem->linearizeOperation = 1;
+    
+	// Use Pangolin as a Visualizer and register as the slam viewer
+	shared_ptr<PangolinDSOViewer> viewer = nullptr;
+	if (!disableAllDisplay) {
         viewer = shared_ptr<PangolinDSOViewer>(new PangolinDSOViewer(wG[0], hG[0], false));
         fullSystem->setViewer(viewer);
     } else {
@@ -310,8 +296,9 @@ int main(int argc, char **argv) {
 
     // to make MacOS happy: run this in dedicated thread -- and use this one to run the GUI.
     std::thread runthread([&]() {
-        std::vector<int> idsToPlay;
+		std::vector<int> idsToPlay;
         std::vector<double> timesToPlayAt;
+		// Scan image sequences 
         for (int i = lstart; i >= 0 && i < reader->getNumImages() && linc * i < linc * lend; i += linc) {
             idsToPlay.push_back(i);
             if (timesToPlayAt.size() == 0) {
@@ -322,16 +309,6 @@ int main(int argc, char **argv) {
                 timesToPlayAt.push_back(timesToPlayAt.back() + fabs(tsThis - tsPrev) / playbackSpeed);
             }
         }
-		std::cout << "idsToPlay:" <<idsToPlay.size() << "\n";
-
-        std::vector<ImageAndExposure *> preloadedImages;
-        if (preload) {
-            printf("LOADING ALL IMAGES!\n");
-            for (int ii = 0; ii < (int) idsToPlay.size(); ii++) {
-                int i = idsToPlay[ii];
-                preloadedImages.push_back(reader->getImage(i));
-            }
-        }
 
         struct timeval tv_start;
         gettimeofday(&tv_start, NULL);
@@ -340,12 +317,9 @@ int main(int argc, char **argv) {
 
 
         for (int ii = 0; ii < (int) idsToPlay.size(); ii++) {
+            while (setting_pause == true) usleep(5000); // pause the whole system            
 
-            while (setting_pause == true) {
-                usleep(5000);
-            }
-            if (!fullSystem->initialized)    // if not initialized: reset start time.
-            {
+			if (!fullSystem->initialized) {
                 gettimeofday(&tv_start, NULL);
                 started = clock();
                 sInitializerOffset = timesToPlayAt[ii];
@@ -354,11 +328,7 @@ int main(int argc, char **argv) {
             int i = idsToPlay[ii];
 
             ImageAndExposure *img;
-            if (preload)
-                img = preloadedImages[ii];
-            else
-                img = reader->getImage(i);
-
+            img = reader->getImage(i);
 
             bool skipFrame = false;
             if (playbackSpeed != 0) {
@@ -396,7 +366,6 @@ int main(int argc, char **argv) {
                 LOG(INFO) << "Lost!";
                 break;
             }
-
         }
 
         fullSystem->blockUntilMappingIsFinished();

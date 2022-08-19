@@ -123,7 +123,7 @@ namespace ldso {
     bool setting_debugout_runquiet = false;
     bool setting_pause = false;
     int setting_pointSelection = 1;
-    int sparsityFactor = 5;          // not actually a setting, only some legacy stuff for coarse initializer.
+    int sparsityFactor = 8;          // not actually a setting, only some legacy stuff for coarse initializer.
 
     bool setting_enableLoopClosing = true;
     bool setting_fastLoopClosing = true;

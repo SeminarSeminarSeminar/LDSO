@@ -62,7 +62,7 @@ namespace ldso {
 
         SE3 refToNew_current = thisToNext;
         AffLight refToNew_aff_current = thisToNext_aff;
-
+		//std::cout << "thisToNext:" <<  thisToNext.matrix() << "\n";
         if (firstFrame->ab_exposure > 0 && newFrame->ab_exposure > 0)
             refToNew_aff_current = AffLight(logf(newFrame->ab_exposure / firstFrame->ab_exposure),
                                             0); // coarse approximation.
@@ -104,8 +104,8 @@ namespace ldso {
                 } else
                     inc = -(wM * (Hl.ldlt().solve(bl)));    //=-H^-1 * b.
 
-
                 SE3 refToNew_new = SE3::exp(inc.head<6>().cast<double>()) * refToNew_current;
+
                 AffLight refToNew_aff_new = refToNew_aff_current;
                 refToNew_aff_new.a += inc[6];
                 refToNew_aff_new.b += inc[7];
