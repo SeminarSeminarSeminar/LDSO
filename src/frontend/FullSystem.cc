@@ -81,24 +81,18 @@ namespace ldso {
         shared_ptr<FrameHessian> fh = frame->frameHessian;
 		fh->ab_exposure = image->exposure_time;
         fh->makeImages(image->image, Hcalib->mpCH);
-		std::cout << "fh exposure " << fh->ab_exposure << "\n";
 
         if (!initialized) {
-            LOG(INFO) << "Initializing ... " << endl;
             // use initializer
-            if (coarseInitializer->frameID < 0) {   // first frame not set, set it
-                coarseInitializer->setFirst(Hcalib->mpCH, fh);
-				std::cout << "set first frame\n";
-            } else if (coarseInitializer->trackFrame(fh)) {
+		    if (coarseInitializer->frameID < 0) {   // first frame not set, set iti
+                coarseInitializer->setFirst(Hcalib->mpCH, fh); 
+            } else if (coarseInitializer->trackFrame(fh)) { 
                 // init succeeded
-				std::cout << "track frame\n";
                 initializeFromInitializer(fh);
                 lock.unlock();
                 deliverTrackedFrame(fh, true);  // create new keyframe
-                LOG(INFO) << "init success." << endl;
             } else {
                 // still initializing
-				std::cout << "Still Initializting\n"; 
                 frame->poseValid = false;
                 frame->ReleaseAll();        // don't need this frame, release all the internal
             }
@@ -116,9 +110,7 @@ namespace ldso {
 
             // track the new frame and get the state
             LOG(INFO) << "tracking new frame" << endl;
-			std::cout << "tracking new frame" << fh->frame->getPose().matrix() << "\n";
             Vec4 tres = trackNewCoarse(fh);
-			std::cout << "tracked new frame" << fh->frame->getPose().matrix() << "\n";
 
 
             if (!std::isfinite((double) tres[0]) || !std::isfinite((double) tres[1]) ||
@@ -128,21 +120,17 @@ namespace ldso {
                 isLost = true;
                 return;
             }
+            // 저의 뇌피셜
+            // keyframe은 많으면 많을수록 좋다! key frame이 되지 못하는 놈은 어떤 조건을 만족시키지 못했다.
+            // 실제 코드 : keyframe 최대한으로 만들려고 하고있지 않다.
 
             bool needToMakeKF = false;
             if (setting_keyframesPerSecond > 0) {
                 // make key frame by time
-				std::cout << "setting keyframePerSecond\n" ;
                 needToMakeKF = allFrameHistory.size() == 1 ||
                                (frame->timeStamp - frames.back()->timeStamp) >
                                0.95f / setting_keyframesPerSecond;
             } else {
-				std::cout << "fromToVecExposure\n" ;
-				std::cout << "from exposure " << coarseTracker->lastRef->ab_exposure << "\n";
-				std::cout << "to exposure " << fh->ab_exposure << "\n";
-				std::cout << "from g2l " << coarseTracker->lastRef_aff_g2l.a << " " << coarseTracker->lastRef_aff_g2l.b << "\n";
-				std::cout << "to g2l " << fh->aff_g2l().a << " " << fh->aff_g2l().b << "\n";
-
                 Vec2 refToFh = AffLight::fromToVecExposure(coarseTracker->lastRef->ab_exposure, fh->ab_exposure,
                                                            coarseTracker->lastRef_aff_g2l, fh->aff_g2l());
 
@@ -175,10 +163,8 @@ namespace ldso {
     void FullSystem::deliverTrackedFrame(shared_ptr<FrameHessian> fh, bool needKF) {
         if (linearizeOperation) {
             if (needKF) {
-				std::cout << "makeKeyFrame\n";
                 makeKeyFrame(fh);
             } else {
-				std::cout  << "notKeyFrame\n";
                 makeNonKeyFrame(fh);
             }
         } else {
@@ -410,7 +396,7 @@ namespace ldso {
         }
 
         mappingThread.join();
-
+		
         if (setting_enableLoopClosing) {
             loopClosing->SetFinish(true);
             if (globalMap->NumFrames() > 4) {
@@ -439,6 +425,7 @@ namespace ldso {
                   << endl;
 
         // trace new keyframe
+        // 궁금한점 : track ?? trace
         traceNewCoarse(fh);
 
         unique_lock<mutex> lock(mapMutex);
@@ -644,6 +631,7 @@ namespace ldso {
                             n--;
                         }
                     }
+
                 }
             }
         }
@@ -2020,9 +2008,53 @@ namespace ldso {
 		}
 		cout << "marginalized Points: " << margPointNum << " Points: " << pointNum << "\n";
 		f.close();
-
 		LOG(INFO) << "saving map done." << endl;
 	}
+	void FullSystem::printFramePose(const string &filename, bool printOptimized) {
+		std::cout << "frame pose..." << endl;
+		unique_lock<mutex> lock(trackMutex);
+		unique_lock<mutex> crlock(shellPoseMutex);
+		ofstream f(filename);
+		int pointNum = 0;
+		int margPointNum = 0;
+		auto allKFs = globalMap->GetAllKFs();
+		for (auto &fr: allKFs) {
+			if (printOptimized == false) {
+			} else {
+				f << fr->id << " ";
+				for (int i = 0; i < 4; ++i){
+					for(int j = 0; j < 4; ++j){
+						f << fr->getPose().matrix().coeff(i,j) << " ";
+					}
+				}
+				f << "\n";
+			}
+		}
+		f.close();
+	}
+	void FullSystem::printFrameOptPose(const string &filename, bool printOptimized) {
+		std::cout << "frame opt pose" << "\n";
+		unique_lock<mutex> lock(trackMutex);
+		unique_lock<mutex> crlock(shellPoseMutex);
+		ofstream f(filename);
+		int pointNum = 0;
+		int margPointNum = 0;
+		auto allKFs = globalMap->GetAllKFs();
+		for (auto &fr: allKFs) {
+			if (printOptimized == false) {
+			} else {
+				f << fr->id << " ";
+				for (int i = 0; i < 4; ++i){
+					for(int j = 0; j < 4; ++j){
+						f << fr->getPoseOpti().matrix().coeff(i,j) << " ";
+					}
+				}
+				f << "\n";
+			}
+		}
+		f.close();
+	}
+
 	void FullSystem::printResultMap2(const string &filename, bool printOptimized) {
 		LOG(INFO) << "saving map..." << endl;
 		unique_lock<mutex> lock(trackMutex);

@@ -351,6 +351,8 @@ namespace ldso {
         void printResultKitti(const string &filename, bool printOptimized = true);
 		void printResultMap(const string &filename, bool printOptimized = true);
 		void printResultMap2(const string &filename, bool printOptimized = true);
+		void printFramePose(const string &filename, bool printOptimized = true);
+		void printFrameOptPose(const string &filename, bool printOptimized = true);
 
     };
 

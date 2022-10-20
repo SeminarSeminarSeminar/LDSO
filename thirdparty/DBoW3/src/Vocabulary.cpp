@@ -1102,7 +1102,6 @@ void Vocabulary::save(cv::FileStorage &f,
     for(pit = children.begin(); pit != children.end(); pit++)
     {
       const Node& child = m_nodes[*pit];
-      std::cout<<m_nodes[*pit].id<<" ";
 
       // save node data
       f << "{:";
@@ -1119,7 +1118,6 @@ void Vocabulary::save(cv::FileStorage &f,
       }
     }
   }
-  std::cout<<"\n";
 
   f << "]"; // nodes
 
@@ -1157,7 +1155,6 @@ void Vocabulary::toStream(  std::ostream &out_str, bool compressed) const throw(
     aux_stream.write((char*)&m_weighting,sizeof(m_weighting));
     //nodes
     std::vector<NodeId> parents={0};// root
-
 
     while(!parents.empty())
     {

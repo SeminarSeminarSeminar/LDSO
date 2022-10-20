@@ -405,11 +405,13 @@ int main(int argc, char **argv) {
         struct timeval tv_end;
         gettimeofday(&tv_end, NULL);
 
-        // in Kitti, the scale drift is obvious, so we only save the trajectory after loop closing.
+        // in Kitti, the scale drift is obvious, so we only save the trajectory after loop closing
+		::std::cout << "saving maps\n" << "\n";
         fullSystem->printResultKitti(output_file, true);
         fullSystem->printResultKitti(output_file + ".noloop", false);
-        fullSystem->printResultMap("map", true);
-		
+        fullSystem->printResultMap("kitti_pcl_map00.pcl", true);
+		fullSystem->printFramePose("kitti_frame_pose.txt", true);
+		fullSystem->printFrameOptPose("kitti_frame_opt_pose.txt", true);
 
         int numFramesProcessed = abs(idsToPlay[0] - idsToPlay.back());
         double numSecondsProcessed = fabs(reader->getTimestamp(idsToPlay[0]) - reader->getTimestamp(idsToPlay.back()));

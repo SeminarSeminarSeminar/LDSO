@@ -79,7 +79,14 @@ namespace ldso {
                     usleep(10000);
                 }
             }
-            LOG(INFO) << "Loop closing thread is finished" << endl;
+			string filename = "kitti_checked_KFs";
+			ofstream f(filename);	
+			for (const auto&[key, value] : checkedKFs){
+				f << key << " " << value->id << "\n";
+			}
+			f.close();
+            ::std::cout << "Loop closing thread is finished" << endl;
+			kfDB->save("dbow3_db.bin");
         }
 
     private:
