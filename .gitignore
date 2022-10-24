@@ -11,7 +11,7 @@ lib/*
 **/lib
 build*
 **/CmakeLists.txt
-
+CmakeLists.txt
 # results
 results/*
 evaluation/results/
