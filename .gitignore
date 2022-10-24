@@ -10,7 +10,7 @@ bin/*
 lib/*
 **/lib
 build*
-/*.txt
+CMakeLists*
 
 # results
 results/*
