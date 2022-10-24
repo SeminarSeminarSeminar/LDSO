@@ -29,7 +29,7 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
 # required libs
 find_package(Eigen3 REQUIRED)
-find_package(OpenCV REQUIRED HINTS)
+find_package(OpenCV REQUIRED HINTS /home/jw/Thirdparty/opencv/install/Release/lib/cmake/opencv4)
 find_package(Glog REQUIRED)
 find_package(Pangolin REQUIRED HINTS /home/jw/Thirdparty/pangolin/install/Release/lib/cmake/Pangolin)
 
