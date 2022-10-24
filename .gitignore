@@ -10,8 +10,8 @@ bin/*
 lib/*
 **/lib
 build*
-**/CmakeLists.txt
-CmakeLists.txt
+**/CMakeLists.txt
+CMakeLists.txt
 # results
 results/*
 evaluation/results/
