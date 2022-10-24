@@ -251,6 +251,16 @@ void parseArgument(char *arg) {
         return;
     }
 
+    if (1 == sscanf(arg, "save_more_info=%d", &option)) {
+        if (option == 1) {
+            LOG(INFO) << "save all frame information!" << endl; 
+        }
+        else if (option == 0) {
+            LOG(INFO) << "save only keyframe information!" << endl;
+        }
+        return;
+    }
+
     printf("could not parse argument \"%s\"!!!!\n", arg);
 }
 
