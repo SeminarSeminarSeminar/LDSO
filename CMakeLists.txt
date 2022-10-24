@@ -28,7 +28,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
 # required libs
-find_package(Eigen3 REQUIRED)
+find_package(Eigen3 REQUIRED HINTS /home/jw/Thirdparty/eigen/install/Release/share/eigen3/cmake)
 find_package(OpenCV REQUIRED HINTS /home/jw/Thirdparty/opencv/install/Release/lib/cmake/opencv4)
 find_package(Glog REQUIRED)
 find_package(Pangolin REQUIRED HINTS /home/jw/Thirdparty/pangolin/install/Release/lib/cmake/Pangolin)
