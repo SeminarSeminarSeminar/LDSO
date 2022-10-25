@@ -4,24 +4,39 @@
 #include <unistd.h>
 #include <sys/time.h>
 
+#include "Feature.h"
+#include "Frame.h"
+#include "internal/ImmaturePoint.h"
+
+
 #include "frontend/FullSystem.h"
 #include "DatasetReader.h"
+#include "DBoW3/src/DBoW3.h"
 
-
-float setting_desiredImmatureDensity = 1500;
 
 int main(int argc, char* argv[]){
 	// Load Vocabulary
-	ORBVocabulary orb3_vocabulary;
-	orb3_vocabulary.load("./vocab/orbvoc.dbow3");
+	shared_ptr<ORBVocabulary> orb3_vocabulary;
+	orb3_vocabulary->load("./vocab/orbvoc.dbow3");
 
 	// Load DBow Database
 	DBoW3::QueryResults results;
-	DBow3::DBoW3Database keyframe_database;
-	DBow3::BowVector frame_bow;
-	DBow3::FeatureVector feature_vector;
+	DBoW3::Database keyframe_database;
+	DBoW3::BowVector frame_bow;
+	DBoW3::FeatureVector feature_vector;
 
 	// load image
+	shared_ptr<ImageFolderReader> reader(new ImageFolderReader(ImageFolderReader::KITTI, argv[1], argv[2],"",""));
+	shared_ptr<ImageAndExposure> img(reader->getImage(0));
+	reader->setGlobalCalibration();
+
+	// Create Frame
+	shared_ptr<Camera> camera(new Camera(fxG[0], fyG[0], cxG[0], cyG[0]));
+	shared_ptr<Frame> frame(new Frame(img->timestamp));
+	frame->CreateFH(frame);
+	shared_ptr<FrameHessian> frame_hessian = frame->frameHessian;
+	frame_hessian->ab_exposure = img->exposure_time;
+	frame_hessian->makeImages(img->image, camera->mpCH);
 
 	vector<Feature> features;
 	vector<cv::Mat> descriptors;
@@ -30,26 +45,14 @@ int main(int argc, char* argv[]){
 
 	FeatureDetector detector;
 	features.reserve(setting_desiredImmatureDensity);
-	detector.DetectCorners(stting_desiredImmatureDensity, frame);
+	detector.DetectCorners(setting_desiredImmatureDensity, frame);
 	
-	for(auto &feature: features){
-		feature->ip = shared_ptr<ImmaturePoint>(
-			new ImmaturePoint(frame, feature, 1 Hcalib->mpCH);
-		)
+	for(auto &feature: frame_hessian->frame->features){
+		feature->ip = shared_ptr<ImmaturePoint>(new ImmaturePoint(frame_hessian->frame, feature, 1, camera->mpCH));
 	}
-
-	for(const auto &feature: features){
-		if(feature->isCorner) {
-			cv::Mat m(1,32, CV_8U);
-			for (int k = 0; k<32; k++){
-				m.data[k] = feature.descriptor[k];
-			}
-			descriptors.push_back(m);
-			bow_id.push_back(i);
-		}
-	}
+	frame->ComputeBoW(orb3_vocabulary);
 	orb3_vocabulary->transform(descriptors, frame_bow, feature_vector, 4);
-	
+
 	keyframe_database.query(frame->bowVec, results, 1, 0);
 
 

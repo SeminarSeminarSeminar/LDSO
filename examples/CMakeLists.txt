@@ -16,3 +16,7 @@ target_link_libraries( run_dso_kitti
 add_executable( run_test run_test.cc )
 target_link_libraries( run_test
   ldso ${THIRD_PARTY_LIBS} )
+
+add_executable( dbow_test dbow_test.cc )
+target_link_libraries( dbow_test
+  ldso ${THIRD_PARTY_LIBS} )
