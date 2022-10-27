@@ -34,7 +34,7 @@ int main(int argc, char* argv[]){
 	shared_ptr<ImageFolderReader> reader(new ImageFolderReader(ImageFolderReader::KITTI, argv[1], argv[2],"",""));
 	shared_ptr<ImageAndExposure> img(reader->getImage(0));
 	reader->setGlobalCalibration();
-	std::cout << "reader\n";
+	std::cout << "reader set done\n";
 
 	// Create Frame
 	shared_ptr<Camera> camera(new Camera(fxG[0], fyG[0], cxG[0], cyG[0]));
@@ -43,6 +43,7 @@ int main(int argc, char* argv[]){
 	shared_ptr<FrameHessian> frame_hessian = frame->frameHessian;
 	frame_hessian->ab_exposure = img->exposure_time;
 	frame_hessian->makeImages(img->image, camera->mpCH);
+	std::cout << "frame created\n";
 
 	vector<Feature> features;
 	vector<cv::Mat> descriptors;
