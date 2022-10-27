@@ -12,23 +12,29 @@
 #include "frontend/FullSystem.h"
 #include "DatasetReader.h"
 #include "DBoW3/src/DBoW3.h"
+#include "DBoW3/src/Database.h"
 
 
 int main(int argc, char* argv[]){
 	// Load Vocabulary
-	shared_ptr<ORBVocabulary> orb3_vocabulary;
-	orb3_vocabulary->load("./vocab/orbvoc.dbow3");
+	shared_ptr<ORBVocabulary> orb3_vocabulary(new ORBVocabulary());
+	orb3_vocabulary->load(argv[3]);
+	std::cout << "vocabulary loaded\n";
+
 
 	// Load DBow Database
 	DBoW3::QueryResults results;
 	DBoW3::Database keyframe_database;
 	DBoW3::BowVector frame_bow;
 	DBoW3::FeatureVector feature_vector;
+	keyframe_database.load(argv[4]);
+	std::cout << "database loaded\n";
 
 	// load image
 	shared_ptr<ImageFolderReader> reader(new ImageFolderReader(ImageFolderReader::KITTI, argv[1], argv[2],"",""));
 	shared_ptr<ImageAndExposure> img(reader->getImage(0));
 	reader->setGlobalCalibration();
+	std::cout << "reader\n";
 
 	// Create Frame
 	shared_ptr<Camera> camera(new Camera(fxG[0], fyG[0], cxG[0], cyG[0]));
