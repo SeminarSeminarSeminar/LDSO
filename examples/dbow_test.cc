@@ -24,10 +24,11 @@ int main(int argc, char* argv[]){
 
 	// Load DBow Database
 	DBoW3::QueryResults results;
-	DBoW3::Database keyframe_database;
 	DBoW3::BowVector frame_bow;
 	DBoW3::FeatureVector feature_vector;
-	keyframe_database.load(argv[4]);
+	shared_ptr<DBoW3::Database> keyframe_database(new DBoW3::Database(*orb3_vocabulary));
+
+	keyframe_database->load(argv[4]);
 	std::cout << "database loaded\n";
 
 	// load image
@@ -45,22 +46,24 @@ int main(int argc, char* argv[]){
 	frame_hessian->makeImages(img->image, camera->mpCH);
 	std::cout << "frame created\n";
 
-	vector<Feature> features;
-	vector<cv::Mat> descriptors;
-	vector<int> bow_id;
-
-
+	// Loop Detection
 	FeatureDetector detector;
-	features.reserve(setting_desiredImmatureDensity);
+	frame->features.reserve(setting_desiredImmatureDensity);
 	detector.DetectCorners(setting_desiredImmatureDensity, frame);
-	
+	std::cout << "features detected\n";	
 	for(auto &feature: frame_hessian->frame->features){
 		feature->ip = shared_ptr<ImmaturePoint>(new ImmaturePoint(frame_hessian->frame, feature, 1, camera->mpCH));
 	}
 	frame->ComputeBoW(orb3_vocabulary);
-	orb3_vocabulary->transform(descriptors, frame_bow, feature_vector, 4);
+	std::cout << "bag of words computed\n";
 
-	keyframe_database.query(frame->bowVec, results, 1, 0);
+	keyframe_database->query(frame->bowVec, results, 1, -1);
+	if(results.empty()){
+		std::cout << "no loop found\n";
+	}
+	DBoW3::Result r = results[0];
+	std::cout << r.Id <<"\n";
+
 
 
 	return 0;
