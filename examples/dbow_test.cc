@@ -46,6 +46,7 @@ int main(int argc, char* argv[]){
 
 	// Load Vocabulary
 	shared_ptr<ORBVocabulary> orb3_vocabulary(new ORBVocabulary());
+
 	orb3_vocabulary->load(argv[3]);
 	std::cout << "vocabulary loaded\n";
 
@@ -54,7 +55,7 @@ int main(int argc, char* argv[]){
 	DBoW3::QueryResults results;
 	DBoW3::BowVector frame_bow;
 	DBoW3::FeatureVector feature_vector;
-	shared_ptr<DBoW3::Database> keyframe_database(new DBoW3::Database(*orb3_vocabulary));
+	shared_ptr<DBoW3::Database> keyframe_database(new DBoW3::Database());
 
 	keyframe_database->load(argv[4]);
 	std::cout << "database loaded\n";
@@ -62,7 +63,6 @@ int main(int argc, char* argv[]){
 	// load image
 	shared_ptr<ImageFolderReader> reader(new ImageFolderReader(ImageFolderReader::KITTI, argv[1], argv[2],"",""));
 	reader->setGlobalCalibration();
-	shared_ptr<ImageAndExposure> img(reader->getImage(0));
 
 	std::cout << "reader set done\n";
 
@@ -70,35 +70,37 @@ int main(int argc, char* argv[]){
 	shared_ptr<Camera> camera(new Camera(fxG[0], fyG[0], cxG[0], cyG[0]));
 	camera->CreateCH(camera);
 
+	for (int i=0; i<reader->getNumImages(); i++){
+		shared_ptr<ImageAndExposure> img(reader->getImage(i));
+		shared_ptr<Frame> frame(new Frame(img->timestamp));
+		frame->CreateFH(frame);
+		shared_ptr<FrameHessian> frame_hessian = frame->frameHessian;
+		frame_hessian->ab_exposure = img->exposure_time;
+		frame_hessian->makeImages(img->image, camera->mpCH);
+		
+		// Loop Detection
+		FeatureDetector detector;
+		frame->features.reserve(setting_desiredImmatureDensity);
+		detector.DetectCorners(setting_desiredImmatureDensity, frame);
+		
+		for(auto &feature: frame_hessian->frame->features){
+			feature->ip = shared_ptr<ImmaturePoint>(new ImmaturePoint(frame_hessian->frame, feature, 1, camera->mpCH));
+		}
+		frame->ComputeBoW(orb3_vocabulary);
 
-	shared_ptr<Frame> frame(new Frame(img->timestamp));
-	frame->CreateFH(frame);
-	shared_ptr<FrameHessian> frame_hessian = frame->frameHessian;
-	frame_hessian->ab_exposure = img->exposure_time;
-	frame_hessian->makeImages(img->image, camera->mpCH);
-	std::cout << "frame created\n";
+		keyframe_database->add(frame->bowVec,frame->featVec);
+		//std::cout << "feature vector:" << frame->featVec << "\n";
+		//std::cout << "bow bector:" << frame->bowVec << "\n";
+		
+		keyframe_database->query(frame->bowVec, results,1, 2018); 
+		std::cout<< results.size() <<"\n";
+		if(results.empty()){
+			std::cout << "no loop found\n";
+		}
+		DBoW3::Result r = results[0];
+		std::cout << i <<" " << r.Id << " " << r.Score << "\n";
 
-	// Loop Detection
-	FeatureDetector detector;
-	frame->features.reserve(setting_desiredImmatureDensity);
-	detector.DetectCorners(setting_desiredImmatureDensity, frame);
-	std::cout << "features detected\n";	
-	for(auto &feature: frame_hessian->frame->features){
-		feature->ip = shared_ptr<ImmaturePoint>(new ImmaturePoint(frame_hessian->frame, feature, 1, camera->mpCH));
 	}
-	frame->ComputeBoW(orb3_vocabulary);
-	std::cout << "bag of words computed\n";
-	
-	keyframe_database->add(frame->bowVec,frame->featVec);
-
-	keyframe_database->query(frame->bowVec, results, 1);
-	if(results.empty()){
-		std::cout << "no loop found\n";
-		exit(1);
-	}
-	DBoW3::Result r = results[0];
-	//keyframe_database->save("test_dbow.bin");
-	std::cout << r.Id << "\n";
 
 
 
