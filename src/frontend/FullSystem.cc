@@ -29,7 +29,10 @@ namespace ldso {
         ef(new EnergyFunctional()),
         Hcalib(new Camera(fxG[0], fyG[0], cxG[0], cyG[0])),
         globalMap(new Map(this)),
-        vocab(voc) {
+        vocab(voc),
+		keyframe_database(new DBoW3::Database(*voc))
+		{
+
 
         LOG(INFO) << "This is Direct Sparse Odometry, a fully direct VO proposed by TUM vision group."
             "For more information about dso, see Direct Sparse Odometry, J. Engel, V. Koltun, "
@@ -47,15 +50,16 @@ namespace ldso {
 
         if (setting_enableLoopClosing) {
             loopClosing = shared_ptr<LoopClosing>(new LoopClosing(this));
-            if (setting_fastLoopClosing)
-                LOG(INFO) << "Use fast loop closing" << endl;
-        } else {
-            LOG(INFO) << "loop closing is disabled" << endl;
         }
+		
+		entry_frame_map_file.open("entry-frame.txt");
+		frame_pose_file.open("results.txt");
+		keyframe_database->load("dbow3_db.gz");
 
     }
 
     FullSystem::~FullSystem() {
+		std::cout << "full system destroy\n";
         blockUntilMappingIsFinished();
         // remember to release the inner structure
         this->unmappedTrackedFrames.clear();
@@ -64,10 +68,44 @@ namespace ldso {
         } else {
         }
     }
+	SE3 FullSystem::searchDatabase(shared_ptr<Frame> frame){
+		DBoW3::QueryResults results;
+		DBoW3::FeatureVector feature_vector;
+		frame->features.reserve(setting_desiredImmatureDensity);
+		detector.DetectCorners(setting_desiredImmatureDensity, frame);
+		for (auto &feat: frame->features) {
+			// create a immature point
+			feat->ip = shared_ptr<ImmaturePoint>(
+					new ImmaturePoint(frame, feat, 1, Hcalib->mpCH));
+		}
+		frame->ComputeBoW(vocab);
 
-    void FullSystem::addActiveFrame(ImageAndExposure *image, int id) {
-        if (isLost)
-            return;
+		keyframe_database->query(frame->bowVec, results, 1, 2018); 
+		std::cout<< results.size() <<"\n";
+		if(results.empty()){
+			std::cout << "no loop found\n";
+			return SE3();
+		}
+		DBoW3::Result r = results[0];
+		std::cout  << r.Id << " " << r.Score << "\n";
+		if (r.Score < 0.06) {
+			std::cout << "low score \n";
+			return SE3();
+		}
+		Eigen::Matrix<double,4,4> temp;
+		temp.setIdentity();
+		for (int i = 0; i < 12; i++){
+			std::cout << frame_pose_map[entry_frame_map[r.Id]].at(i) << "\n";;
+			temp(i/4, i%4) = frame_pose_map[entry_frame_map[r.Id]].at(i);
+		}
+		std::cout << "searched frame id : " << entry_frame_map[r.Id] << "\n";
+		std::cout << "searched frame pose : " << temp << "\n";
+		return SE3(temp).inverse();
+
+	}
+	void FullSystem::addActiveFrame(ImageAndExposure *image, int id) {
+		if (isLost)
+			return;
         unique_lock<mutex> lock(trackMutex);
 
         LOG(INFO) << "*** taking frame " << id << " ***" << endl;
@@ -83,9 +121,56 @@ namespace ldso {
         fh->makeImages(image->image, Hcalib->mpCH);
 
         if (!initialized) {
-            // use initializer
-		    if (coarseInitializer->frameID < 0) {   // first frame not set, set iti
-                coarseInitializer->setFirst(Hcalib->mpCH, fh); 
+			if (coarseInitializer->frameID < 0) {   // first frame not set, set iti
+				std::cout << "first frame\n";
+                coarseInitializer->setFirst(Hcalib->mpCH, fh);
+				int entry_id = -1, frame_id = -1;
+				while(!entry_frame_map_file.eof()){
+					entry_frame_map_file >> entry_id;
+					entry_frame_map_file >> frame_id;
+					entry_frame_map[entry_id] = frame_id;
+				}
+				while(!frame_pose_file.eof()){
+					std::vector<float> pose;
+					frame_pose_file >> frame_id;
+					for (int i = 0; i < 12; ++i){
+						float temp;
+						frame_pose_file >> temp;
+						pose.push_back(temp);
+					}
+					frame_pose_map.insert(std::pair<int, vector<float>>(frame_id,pose));
+				}
+				entry_frame_map_file.close();
+				frame_pose_file.close();
+				
+				// search DB
+				frame->setPose(searchDatabase(frame));
+				first_pose = searchDatabase(frame);
+
+			}else{
+
+				//fh->frame->setPose(first_pose);
+				frame->setPose(searchDatabase(frame));
+
+				bool go = coarseInitializer->trackFrame(fh); // 6번까지
+				if(go){
+					// 7번
+					std::cout << "go\n";
+					initializeFromInitializer(fh); // 여기서 initialized = true
+					//fh->frame->setPose(first_pose);
+					lock.unlock();
+					deliverTrackedFrame(fh, true);  // create new keyframe
+
+				} else {
+					frame->poseValid = false;
+					frame->ReleaseAll();
+				}
+			}
+			// use initializer
+			/*
+			if (coarseInitializer->frameID < 0) {   // first frame not set, set iti
+                coarseInitializer->setFirst(Hcalib->mpCH, fh);
+				
             } else if (coarseInitializer->trackFrame(fh)) { 
                 // init succeeded
                 initializeFromInitializer(fh);
@@ -96,8 +181,16 @@ namespace ldso {
                 frame->poseValid = false;
                 frame->ReleaseAll();        // don't need this frame, release all the internal
             }
+			*/
+
             return;
         } else {
+			auto allKFs = globalMap->GetAllKFs();
+
+			std::cout << frames.back()->getPose().inverse().matrix() << "\n";
+			frame->setPose(frames.back()->getPose().inverse());
+	
+			//8번브타
             // init finished, do tracking
             // =========================== SWAP tracking reference?. =========================
             if (coarseTracker_forNewKF->refFrameID > coarseTracker->refFrameID) {
@@ -109,14 +202,15 @@ namespace ldso {
             }
 
             // track the new frame and get the state
-            LOG(INFO) << "tracking new frame" << endl;
+            std::cout << "tracking new frame" << endl;
             Vec4 tres = trackNewCoarse(fh);
 
-
+			std::cout <<"tres: " << tres << "\n"; 	
             if (!std::isfinite((double) tres[0]) || !std::isfinite((double) tres[1]) ||
                 !std::isfinite((double) tres[2]) || !std::isfinite((double) tres[3])) {
                 // invalid result
-                LOG(WARNING) << "Initial Tracking failed: LOST!" << endl;
+
+                std::cout << "Initial Tracking failed: LOST!" << endl;
                 isLost = true;
                 return;
             }
@@ -147,7 +241,7 @@ namespace ldso {
 
                 needToMakeKF = allFrameHistory.size() == 1 || b1 || b2;
             }
-
+			std::cout << "frame pose " << fh->frame->getPose().inverse().matrix() <<"\n";
             if (viewer){
                 viewer->publishCamPose(fh->frame, Hcalib->mpCH);
 			}
@@ -180,9 +274,8 @@ namespace ldso {
     }
 
     Vec4 FullSystem::trackNewCoarse(shared_ptr<FrameHessian> fh) {
-
+		
         assert(allFrameHistory.size() > 0);
-
         shared_ptr<FrameHessian> lastF = coarseTracker->lastRef;
         CHECK(coarseTracker->lastRef->frame != nullptr);
 
@@ -400,7 +493,8 @@ namespace ldso {
         if (setting_enableLoopClosing) {
             loopClosing->SetFinish(true);
             if (globalMap->NumFrames() > 4) {
-                globalMap->lastOptimizeAllKFs();
+				std::cout << "map optimized skip\n";
+                //globalMap->lastOptimizeAllKFs();
             }
         }
 
@@ -411,7 +505,7 @@ namespace ldso {
     }
 
     void FullSystem::makeKeyFrame(shared_ptr<FrameHessian> fh) {
-
+		std::cout << "make key frame\n";
         shared_ptr<Frame> frame = fh->frame;
         auto refFrame = frames.back();
 
@@ -487,23 +581,26 @@ namespace ldso {
         if (numKFs <= 4) {
             if (numKFs == 2 && rmse > 20 * benchmark_initializerSlackFactor) {
                 LOG(WARNING) << "I THINK INITIALIZATINO FAILED! Resetting." << endl;
-                LOG(INFO) << "rmse = " << rmse << endl;
+                std::cout << "0 rmse = " << rmse << endl;
+
                 initFailed = true;
             }
             if (numKFs == 3 && rmse > 13 * benchmark_initializerSlackFactor) {
                 LOG(WARNING) << "I THINK INITIALIZATINO FAILED! Resetting." << endl;
-                LOG(INFO) << "rmse = " << rmse << endl;
+                std::cout << "1 rmse = " << rmse << endl;
                 initFailed = true;
             }
-            if (numKFs == 4 && rmse > 9 * benchmark_initializerSlackFactor) {
+            if (numKFs == 4 && rmse > 20 * benchmark_initializerSlackFactor) {
                 LOG(WARNING) << "I THINK INITIALIZATINO FAILED! Resetting." << endl;
-                LOG(INFO) << "rmse = " << rmse << endl;
+                std::cout << "2 rmse = " << rmse << endl;
                 initFailed = true;
             }
         }
 
-        if (isLost)
+        if (isLost){
+			std::cout <<"lost!\n";
             return;
+		}
 
         // =========================== REMOVE OUTLIER =========================
         removeOutliers();
@@ -1278,6 +1375,8 @@ namespace ldso {
 
         if (setting_pointSelection == 1) {
             LOG(INFO) << "using LDSO point selection strategy " << endl;
+			std::cout << "feature 1" << "\n";
+
             newFrame->frame->features.reserve(setting_desiredImmatureDensity);
             detector.DetectCorners(setting_desiredImmatureDensity, newFrame->frame);
             for (auto &feat: newFrame->frame->features) {
@@ -1288,6 +1387,7 @@ namespace ldso {
             LOG(INFO) << "new features features created: " << newFrame->frame->features.size() << endl;
         } else if (setting_pointSelection == 0) {
             LOG(INFO) << "using original DSO point selection strategy" << endl;
+
             pixelSelector->allowFast = true;
             int numPointsTotal = pixelSelector->makeMaps(newFrame, selectionMap, setting_desiredImmatureDensity);
             newFrame->frame->features.reserve(numPointsTotal);
@@ -1395,7 +1495,7 @@ namespace ldso {
         {
             unique_lock<mutex> crlock(shellPoseMutex);
             firstFrame->setEvalPT_scaled(fr->getPose(), firstFrame->frame->aff_g2l);
-            newFrame->frame->setPose(firstToNew);
+            //newFrame->frame->setPose(firstToNew);
             newFrame->setEvalPT_scaled(newFrame->frame->getPose(), newFrame->frame->aff_g2l);
         }
 
@@ -2046,7 +2146,7 @@ namespace ldso {
 				f << fr->id << " ";
 				for (int i = 0; i < 4; ++i){
 					for(int j = 0; j < 4; ++j){
-						f << fr->getPoseOpti().matrix().coeff(i,j) << " ";
+						f << fr->getPoseOpti().inverse().matrix().coeff(i,j) << " ";
 					}
 				}
 				f << "\n";

@@ -98,7 +98,10 @@ namespace ldso {
             unique_lock<mutex> lck(poseMutex);
             return Tcw;
         }
-
+		void setPoseInverse(const SE3 &Tcw_inv) {
+			unique_lock<mutex> lck(poseMutex);
+			this->Tcw = Tcw;
+		}
         void setPose(const SE3 &Tcw) {
             unique_lock<mutex> lck(poseMutex);
             this->Tcw = Tcw;

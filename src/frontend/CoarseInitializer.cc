@@ -4,12 +4,9 @@
 #include "frontend/PixelSelector2.h"
 #include "frontend/CoarseInitializer.h"
 #include "frontend/nanoflann.h"
-
 #include <iostream>
 
-
 namespace ldso {
-
     CoarseInitializer::CoarseInitializer(int ww, int hh) : thisToNext_aff(0, 0), thisToNext(SE3()) {
         for (int lvl = 0; lvl < pyrLevelsUsed; lvl++) {
             points[lvl] = 0;
@@ -38,7 +35,6 @@ namespace ldso {
     }
 
     bool CoarseInitializer::trackFrame(shared_ptr<FrameHessian> newFrameHessian) {
-
         newFrame = newFrameHessian;
         int maxIterations[] = {5, 5, 10, 30, 50};
 
@@ -52,6 +48,7 @@ namespace ldso {
             for (int lvl = 0; lvl < pyrLevelsUsed; lvl++) {
                 int npts = numPoints[lvl];
                 Pnt *ptsl = points[lvl];
+
                 for (int i = 0; i < npts; i++) {
                     ptsl[i].iR = 1;
                     ptsl[i].idepth_new = 1;
@@ -61,23 +58,21 @@ namespace ldso {
         }
 
         SE3 refToNew_current = thisToNext;
+		//SE3 refToNew_current = newFrameHessian->frame->getPose();
         AffLight refToNew_aff_current = thisToNext_aff;
-		//std::cout << "thisToNext:" <<  thisToNext.matrix() << "\n";
         if (firstFrame->ab_exposure > 0 && newFrame->ab_exposure > 0)
-            refToNew_aff_current = AffLight(logf(newFrame->ab_exposure / firstFrame->ab_exposure),
-                                            0); // coarse approximation.
+            refToNew_aff_current = AffLight(logf(newFrame->ab_exposure / firstFrame->ab_exposure),0); // coarse approximation.
 
 
         Vec3f latestRes = Vec3f::Zero();
         for (int lvl = pyrLevelsUsed - 1; lvl >= 0; lvl--) {
-
-
             if (lvl < pyrLevelsUsed - 1)
                 propagateDown(lvl + 1);
 
             Mat88f H, Hsc;
             Vec8f b, bsc;
             resetPoints(lvl);
+			// At this point, refToNew_current hold the previous frame pos
             Vec3f resOld = calcResAndGS(lvl, H, b, Hsc, bsc, refToNew_current, refToNew_aff_current, false);
             applyStep(lvl);
 
@@ -120,11 +115,9 @@ namespace ldso {
                 float eTotalNew = (resNew[0] + resNew[1] + regEnergy[1]);
                 float eTotalOld = (resOld[0] + resOld[1] + regEnergy[0]);
 
-
                 bool accept = eTotalOld > eTotalNew;
 
                 if (accept) {
-
                     if (resNew[1] == alphaK * numPoints[lvl])
                         snapped = true;
                     H = H_new;
@@ -161,7 +154,7 @@ namespace ldso {
             latestRes = resOld;
 
         }
-
+		std::cout << snapped << "\n";
         thisToNext = refToNew_current;
         thisToNext_aff = refToNew_aff_current;
 
@@ -186,20 +179,24 @@ namespace ldso {
         int wl = w[lvl], hl = h[lvl];
         Eigen::Vector3f *colorRef = firstFrame->dIp[lvl];
         Eigen::Vector3f *colorNew = newFrame->dIp[lvl];
-
+		// Multiplying extrinsic matrix([R|t]) and intrinsic matrix Generates Projection matrix
+		// Which means transforms a point from World to Pixel.
+		// But what does RxK.inverse() means?
         Mat33f RKi = (refToNew.rotationMatrix() * Ki[lvl]).cast<float>();
         Vec3f t = refToNew.translation().cast<float>();
-        Eigen::Vector2f r2new_aff = Eigen::Vector2f(exp(refToNew_aff.a), refToNew_aff.b);
 
-        float fxl = fx[lvl];
+		// r2new_aff [ e^a_ji b_ji ]^T
+	    Eigen::Vector2f r2new_aff = Eigen::Vector2f(exp(refToNew_aff.a), refToNew_aff.b);
+        
+		float fxl = fx[lvl];
         float fyl = fy[lvl];
         float cxl = cx[lvl];
         float cyl = cy[lvl];
 
         Accumulator11 E;
-        acc9.initialize();
+		// acc9 includes H(9x9) and b(9)
+        acc9.initialize(); 
         E.initialize();
-
 
         int npts = numPoints[lvl];
         Pnt *ptsl = points[lvl];
@@ -207,6 +204,7 @@ namespace ldso {
 
             Pnt *point = ptsl + i;
 
+			// what does the "point is Good" means?
             point->maxstep = 1e10;
             if (!point->isGood) {
                 E.updateSingle((float) (point->energy[0]));
@@ -214,9 +212,12 @@ namespace ldso {
                 point->isGood_new = false;
                 continue;
             }
-
-            VecNRf dp0;
-            VecNRf dp1;
+			// 0 ~ 2 : translation
+			// 3 ~ 5 : rotation
+			// 6 ~ 7 : photometric error
+			// 8     : inverse depth
+            VecNRf dp0;	
+            VecNRf dp1;	
             VecNRf dp2;
             VecNRf dp3;
             VecNRf dp4;
@@ -234,31 +235,33 @@ namespace ldso {
                 int dx = patternP[idx][0];
                 int dy = patternP[idx][1];
 
-
+				// I'm guessing the variable pt is world point...
+				// u, v is pixel coordinate in normalized image
+				// Ku, Kv is back projected pixel coordinate in original image
                 Vec3f pt = RKi * Vec3f(point->u + dx, point->v + dy, 1) + t * point->idepth_new;
-                float u = pt[0] / pt[2];
+
+                float u = pt[0] / pt[2];	
                 float v = pt[1] / pt[2];
                 float Ku = fxl * u + cxl;
                 float Kv = fyl * v + cyl;
                 float new_idepth = point->idepth_new / pt[2];
 
+				// check if the back projected pixel has a valid range
                 if (!(Ku > 1 && Kv > 1 && Ku < wl - 2 && Kv < hl - 2 && new_idepth > 0)) {
                     isGood = false;
                     break;
                 }
-
+				// hitColor is the pattern in the new frame	
+				// rlR is the pattern in the reference frame
                 Vec3f hitColor = getInterpolatedElement33(colorNew, Ku, Kv, wl);
-                //Vec3f hitColor = getInterpolatedElement33BiCub(colorNew, Ku, Kv, wl);
-
-                //float rlR = colorRef[point->u+dx + (point->v+dy) * wl][0];
                 float rlR = getInterpolatedElement31(colorRef, point->u + dx, point->v + dy, wl);
 
                 if (!std::isfinite(rlR) || !std::isfinite((float) hitColor[0])) {
                     isGood = false;
                     break;
                 }
-
-
+				
+				
                 float residual = hitColor[0] - r2new_aff[0] * rlR - r2new_aff[1];
                 float hw = fabs(residual) < setting_huberTH ? 1 : setting_huberTH / fabs(residual);
                 energy += hw * residual * residual * (2 - hw);
@@ -285,6 +288,7 @@ namespace ldso {
                 if (maxstep < point->maxstep) point->maxstep = maxstep;
 
                 // immediately compute dp*dd' and dd*dd' in JbBuffer1.
+				// JbBuffer is the Jacobian Matrix with the size N x (8+N) where, N is the number of points
                 JbBuffer_new[i][0] += dp0[idx] * dd[idx];
                 JbBuffer_new[i][1] += dp1[idx] * dd[idx];
                 JbBuffer_new[i][2] += dp2[idx] * dd[idx];
@@ -296,6 +300,7 @@ namespace ldso {
                 JbBuffer_new[i][8] += r[idx] * dd[idx];
                 JbBuffer_new[i][9] += dd[idx] * dd[idx];
             }
+			// at this momemnt we have added a single row of Jacobian
 
             if (!isGood || energy > point->outlierTH * 20) {
                 E.updateSingle((float) (point->energy[0]));
@@ -310,7 +315,8 @@ namespace ldso {
             point->isGood_new = true;
             point->energy_new[0] = energy;
 
-            // update Hessian matrix.
+            // update Hessian matrix. H_11 and b1
+			// This is the SIMD operation
             for (int i = 0; i + 3 < patternNum; i += 4)
                 acc9.updateSSE(
                         _mm_load_ps(((float *) (&dp0)) + i),
@@ -329,14 +335,13 @@ namespace ldso {
                         (float) dp0[i], (float) dp1[i], (float) dp2[i], (float) dp3[i],
                         (float) dp4[i], (float) dp5[i], (float) dp6[i], (float) dp7[i],
                         (float) r[i]);
-
-
         }
-
+		
         E.finish();
         acc9.finish();
-
+		
         // calculate alpha energy, and decide if we cap it.
+		// what is EAlpha??
         Accumulator11 EAlpha;
         EAlpha.initialize();
         for (int i = 0; i < npts; i++) {
@@ -359,7 +364,7 @@ namespace ldso {
         } else {
             alphaOpt = alphaW;
         }
-
+		
         acc9SC.initialize();
         for (int i = 0; i < npts; i++) {
             Pnt *point = ptsl + i;
@@ -545,7 +550,7 @@ namespace ldso {
     }
 
     void CoarseInitializer::setFirst(shared_ptr<CalibHessian> HCalib, shared_ptr<FrameHessian> newFrameHessian) {
-
+		// K in Camera Intrinsic matrix
         makeK(HCalib);
         firstFrame = newFrameHessian;
 
@@ -571,7 +576,9 @@ namespace ldso {
             int wl = w[lvl], hl = h[lvl];
             Pnt *pl = points[lvl];
             int nl = 0;
-            for (int y = patternPadding + 1; y < hl - patternPadding - 2; y++)
+			
+	
+            for (int y = patternPadding + 1; y < hl - patternPadding - 2; y++) {
                 for (int x = patternPadding + 1; x < wl - patternPadding - 2; x++) {
                     if ((lvl != 0 && statusMapB[x + y * wl]) || (lvl == 0 && statusMap[x + y * wl] != 0)) {
                         //assert(patternNum==9);
@@ -600,6 +607,7 @@ namespace ldso {
                         assert(nl <= npts);
                     }
                 }
+			}
 
 
             numPoints[lvl] = nl;

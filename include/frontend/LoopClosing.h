@@ -79,14 +79,16 @@ namespace ldso {
                     usleep(10000);
                 }
             }
-			string filename = "kitti_checked_KFs";
-			ofstream f(filename);	
-			for (const auto&[key, value] : checkedKFs){
-				f << key << " " << value->id << "\n";
-			}
-			f.close();
             ::std::cout << "Loop closing thread is finished" << endl;
-			kfDB->save("dbow3_db.bin");
+			/*
+			string filename2 = "entry-frame.txt";
+			ofstream f2(filename2);
+			for (const auto &p: added_frame){
+				f2 << p.first << " " << p.second << " " << "\n";
+			}
+			f2.close();
+			kfDB->save("dbow3_db.gz");
+			*/
         }
 
     private:
@@ -108,6 +110,7 @@ namespace ldso {
         shared_ptr<Map> globalMap = nullptr;  // global map
 
         // shared_ptr<KeyFrameDatabase> kfDB = nullptr;
+        DBoW3::Database* test_DB = nullptr;
         shared_ptr<DBoW3::Database> kfDB = nullptr;
         shared_ptr<ORBVocabulary> voc = nullptr;
 
@@ -116,7 +119,7 @@ namespace ldso {
         map<DBoW3::EntryId, shared_ptr<Frame>> checkedKFs;    // keyframes that are recorded.
         int maxKFId = 0;
         shared_ptr<Frame> currentKF = nullptr;
-
+		vector<std::pair<int,int>> added_frame;
         // loop kf queue
         deque<shared_ptr<Frame>> KFqueue;
         mutex mutexKFQueue;

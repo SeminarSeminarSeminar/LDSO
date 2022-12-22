@@ -62,6 +62,7 @@ namespace ldso {
 
     template<int pot>
     inline int gridMaxSelection(Eigen::Vector3f *grads, bool *map_out, int w, int h, float THFac) {
+		// grads[0] : 
 
         memset(map_out, 0, sizeof(bool) * w * h);
 

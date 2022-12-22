@@ -6,7 +6,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
-
+#include <map>
 #include "Frame.h"
 #include "Point.h"
 #include "Feature.h"
@@ -59,7 +59,7 @@ namespace ldso {
         FullSystem(shared_ptr<ORBVocabulary> voc);
 
         ~FullSystem();
-
+		SE3 searchDatabase(shared_ptr<Frame> frame);
         /// adds a new frame, and creates point & residual structs.
         void addActiveFrame(ImageAndExposure *image, int id);
 
@@ -112,7 +112,10 @@ namespace ldso {
             if (viewer)
                 viewer->refreshAll();
         }
-
+		std::map<int,int> entry_frame_map;
+		std::map<int,vector<float>> frame_pose_map;
+		shared_ptr<DBoW3::Database> keyframe_database;
+		
     private:
         // mainPipelineFunctions
         // note track and trace is different, track is used in every new frame to estimate its pose
@@ -312,7 +315,10 @@ namespace ldso {
         thread mappingThread;
         bool runMapping = true;
         bool needToKetchupMapping = false;
-
+		// ========================== relocalization  ==================================== //
+ 		SE3 first_pose;
+		ifstream entry_frame_map_file;
+		ifstream frame_pose_file;
     public:
         shared_ptr<Map> globalMap = nullptr;    // global map
         FeatureDetector detector;   // feature detector

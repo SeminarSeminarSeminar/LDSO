@@ -82,6 +82,7 @@ namespace ldso {
                 }
 
                 //
+
                 for (int idx = wl; idx < wl * (hl - 1); idx++) {
                     float dx = 0.5f * (dI_l[idx + 1][0] - dI_l[idx - 1][0]);
                     float dy = 0.5f * (dI_l[idx + wl][0] - dI_l[idx - wl][0]);

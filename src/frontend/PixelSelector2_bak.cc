@@ -35,82 +35,77 @@ namespace ldso {
 
     void PixelSelector::makeHists(shared_ptr<FrameHessian> fh) {
         gradHistFrame = fh;
-        float *mapmax0 = fh->absSquaredGrad[0]; // what is absSquaredGrad?
+        float *mapmax0 = fh->absSquaredGrad[0];
+
         int w = wG[0];
         int h = hG[0];
 
-		int tile_size = 32;
-        int tiled_w = w / tile_size;
-        int tiled_h = h / tile_size;
-        thsStep = tiled_w;
+        int w32 = w / 32;
+        int h32 = h / 32;
+        thsStep = w32;
 
-        for (int y = 0; y < tiled_h; y++){
-            for (int x = 0; x < tiled_w; x++) {
-                float *map0 = mapmax0 + tile_size*x + tile_size*y*w;	// tile address
-                int *hist0 = gradHist;
-                memset(hist0, 0, sizeof(int) * 50);						// why 50?
-				
-				// Iterate Tile and Generate Histogram
-                for (int tile_row = 0; tile_row < tile_size; tile_row++) {
-                    for (int tile_col = 0; tile_col < tile_size; tile_col++) {
-                        int global_x = tile_row + tile_size*x;
-                        int global_y = tile_col + tile_size*y;
-                        if (global_x > w - 2 || global_y > h - 2 || global_x < 1 || global_y < 1) continue;
-                        int g = sqrtf(map0[tile_col + tile_row * w]);
+        for (int y = 0; y < h32; y++)
+            for (int x = 0; x < w32; x++) {
+                float *map0 = mapmax0 + 32 * x + 32 * y * w;
+                int *hist0 = gradHist;// + 50*(x+y*w32);
+                memset(hist0, 0, sizeof(int) * 50);
+
+                for (int j = 0; j < 32; j++)
+                    for (int i = 0; i < 32; i++) {
+                        int it = i + 32 * x;
+                        int jt = j + 32 * y;
+                        if (it > w - 2 || jt > h - 2 || it < 1 || jt < 1) continue;
+                        int g = sqrtf(map0[i + j * w]);
                         if (g > 48) g = 48;
                         hist0[g + 1]++;
                         hist0[0]++;
                     }
-				}
-				// setting_minGradHistCut = 0.5
-				// setting_minGradHistAdd = 7
-                ths[x + y * tiled_w] = computeHistQuantil(hist0, setting_minGradHistCut) + setting_minGradHistAdd; 
-            }
-		}
 
-        for (int y = 0; y < tiled_h; y++){
-            for (int x = 0; x < tiled_w; x++) {
+                ths[x + y * w32] = computeHistQuantil(hist0, setting_minGradHistCut) + setting_minGradHistAdd;
+            }
+
+        for (int y = 0; y < h32; y++)
+            for (int x = 0; x < w32; x++) {
                 float sum = 0, num = 0;
                 if (x > 0) {
                     if (y > 0) {
                         num++;
-                        sum += ths[x - 1 + (y - 1) * tiled_w];
+                        sum += ths[x - 1 + (y - 1) * w32];
                     }
-                    if (y < tiled_h - 1) {
+                    if (y < h32 - 1) {
                         num++;
-                        sum += ths[x - 1 + (y + 1) * tiled_w];
+                        sum += ths[x - 1 + (y + 1) * w32];
                     }
                     num++;
-                    sum += ths[x - 1 + (y) * tiled_w];
+                    sum += ths[x - 1 + (y) * w32];
                 }
 
-                if (x < tiled_w - 1) {
+                if (x < w32 - 1) {
                     if (y > 0) {
                         num++;
-                        sum += ths[x + 1 + (y - 1) * tiled_w];
+                        sum += ths[x + 1 + (y - 1) * w32];
                     }
-                    if (y < tiled_h - 1) {
+                    if (y < h32 - 1) {
                         num++;
-                        sum += ths[x + 1 + (y + 1) * tiled_w];
+                        sum += ths[x + 1 + (y + 1) * w32];
                     }
                     num++;
-                    sum += ths[x + 1 + (y) * tiled_w];
+                    sum += ths[x + 1 + (y) * w32];
                 }
 
                 if (y > 0) {
                     num++;
-                    sum += ths[x + (y - 1) * tiled_w];
+                    sum += ths[x + (y - 1) * w32];
                 }
-                if (y < tiled_h - 1) {
+                if (y < h32 - 1) {
                     num++;
-                    sum += ths[x + (y + 1) * tiled_w];
+                    sum += ths[x + (y + 1) * w32];
                 }
                 num++;
-                sum += ths[x + y * tiled_w];
+                sum += ths[x + y * w32];
 
-                thsSmoothed[x + y * tiled_w] = (sum / num) * (sum / num);
+                thsSmoothed[x + y * w32] = (sum / num) * (sum / num);
             }
-		}
     }
 
     int PixelSelector::makeMaps(const shared_ptr<FrameHessian> fh, float *map_out, float density,

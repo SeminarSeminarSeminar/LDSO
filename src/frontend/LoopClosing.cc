@@ -25,7 +25,11 @@ namespace ldso {
             globalMap(fullsystem->globalMap), Hcalib(fullsystem->Hcalib->mpCH),
             coarseDistanceMap(fullsystem->GetDistanceMap()),
             fullSystem(fullsystem) {
-
+		kfDB->clear();
+		//ORBVocabulary *test_voc  = new ORBVocabulary();
+		//test_voc->load("../vocab/orbvoc.dbow3");
+		//test_DB = (new DBoW3::Database());
+		//kfDB->load("./dbow3_db.gz");
         mainLoop = thread(&LoopClosing::Run, this);
         idepthMap = new float[wG[0] * hG[0]];
     }
@@ -64,8 +68,10 @@ namespace ldso {
 
             currentKF->ComputeBoW(voc);
             if (DetectLoop(currentKF)) {
+				::std::cout << "[Loop Detection] Frame Id : " << currentKF->id << "\n";
                 bool mapIdle = globalMap->Idle();
                 if (CorrectLoop(Hcalib)) {
+					::std::cout << "[Loop Correction] Frame Id : " << currentKF->id << "\n";
                     // start a pose graph optimization
                     if (mapIdle) {
                         LOG(INFO) << "call global pose graph!" << endl;
@@ -95,14 +101,26 @@ namespace ldso {
     bool LoopClosing::DetectLoop(shared_ptr<Frame> &frame) {
 
         DBoW3::QueryResults results;
-        kfDB->query(frame->bowVec, results, 1, maxKFId - kfGap);
+		DBoW3::QueryResults results2;
+        kfDB->query(frame->bowVec, results, 1, 2018);
+        //kfDB->query(frame->bowVec, results, 1, maxKFId - kfGap);
 
+		//test_DB->query(frame->bowVec, results2, 1, -1);
         if (results.empty()) {
+			
             DBoW3::EntryId id = kfDB->add(frame->bowVec, frame->featVec);
+			added_frame.push_back(make_pair(id, frame->id));
+			std::cout << "db add : frame id " << frame->id << "entry_id" << id <<"\n";
+
             maxKFId = id;
             checkedKFs[id] = frame;
             return false;
         }
+		/*if (!results2.empty()){
+			DBoW3::Result r2 = results2[0];
+			std::cout <<"r2 : " <<r2.Id << " " <<r2.Score << "\n";
+		}*/
+
 
         DBoW3::Result r = results[0];
         candidateKF = checkedKFs[r.Id];
@@ -127,17 +145,20 @@ namespace ldso {
 
         if (r.Score < minScoreAccept) {
             DBoW3::EntryId id = kfDB->add(frame->bowVec, frame->featVec);
+			added_frame.push_back(make_pair(id, frame->id));
+			std::cout << "db add : frame id " << frame->id << "entry_id" << id <<"\n";
+
             maxKFId = id;
             checkedKFs[id] = frame;
             candidateKF = checkedKFs[r.Id];
-            LOG(INFO) << "add loop candidate from " << candidateKF->kfId << ", current: " << frame->kfId << ", score: "
+            ::std::cout << "add loop candidate from " << candidateKF->kfId << ", current: " << frame->kfId << ", score: "
                       << r.Score << endl;
             return true;
         }
 
         // detected a possible loop
         candidateKF = checkedKFs[r.Id];
-        LOG(INFO) << "add loop candidate from " << candidateKF->kfId << ", current: " << frame->kfId << ", score: "
+        ::std::cout << "add loop candidate from " << candidateKF->kfId << ", current: " << frame->kfId << ", score: "
                   << r.Score << endl;
         return true;   // don't add into database
     }
