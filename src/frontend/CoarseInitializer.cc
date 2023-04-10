@@ -6,7 +6,7 @@
 #include "frontend/nanoflann.h"
 
 #include <iostream>
-
+#include <ceres/ceres.h>
 
 namespace ldso {
 
@@ -177,12 +177,53 @@ namespace ldso {
         return snapped && frameID > snappedAt + 5;
     }
 
+    struct PHOTOMETRIC_COST {
+    PHOTOMETRIC_COST(int width, int height, Mat33 K, Mat33 Ki,
+                    Eigen::Vector3f *colorRef, Eigen::Vector3f *colorNew, int u,
+                    int v)
+        : width(width),
+            height(height),
+            _K(K),
+            _Ki(Ki),
+            _colorRef(colorRef),
+            _colorNew(colorNew),
+            _u(u),
+            _v(v) {}
+
+    template <typename T>
+    bool operator()(const T *const args, /*const T *const rotation_x, const T *const rotation_y,
+                    const T *const rotation_z, const T *const translation_x,
+                    const T *const translation_y, const T *const translation_z,
+                    const T *const affine_a, const T *const affine_b,
+                    const T *const inverse_depth, */T *residual) const {
+        Eigen::Vector3d axis_temp;
+        axis_temp << args[0].val(), args[1].val(), args[2].val();
+        Sophus::SO3d so3 = Sophus::SO3d::exp(axis_temp);
+        Eigen::Vector3d translation(args[3], args[4], args[5]);
+        Eigen::Vector3d new_point =
+            (_K) * (so3.matrix() * (_Ki) / args[8] + translation);
+
+        residual[0] = _colorNew[(int)new_point[1] * width + (int)new_point[0]][0] -
+                    args[6] * _colorRef[_v * width + _u][0] - args[7];
+        return true;
+    }
+    const int width, height;
+    const Mat33 _K;
+    const Mat33 _Ki;
+    const Eigen::Vector3f *_colorRef;
+    const Eigen::Vector3f *_colorNew;
+    const int _u, _v;
+    };
+
     // calculates residual, Hessian and Hessian-block neede for re-substituting depth.
     Vec3f CoarseInitializer::calcResAndGS(
             int lvl, Mat88f &H_out, Vec8f &b_out,
             Mat88f &H_out_sc, Vec8f &b_out_sc,
             const SE3 &refToNew, AffLight refToNew_aff,
             bool plot) {
+
+        ceres::Problem problem;
+
         int wl = w[lvl], hl = h[lvl];
         Eigen::Vector3f *colorRef = firstFrame->dIp[lvl];
         Eigen::Vector3f *colorNew = newFrame->dIp[lvl];
@@ -190,6 +231,9 @@ namespace ldso {
         Mat33f RKi = (refToNew.rotationMatrix() * Ki[lvl]).cast<float>();
         Vec3f t = refToNew.translation().cast<float>();
         Eigen::Vector2f r2new_aff = Eigen::Vector2f(exp(refToNew_aff.a), refToNew_aff.b);
+
+        Sophus::SO3d so3_r(refToNew.rotationMatrix()); 
+        Eigen::Vector3d so3_r_log = so3_r.log();
 
         float fxl = fx[lvl];
         float fyl = fy[lvl];
@@ -258,6 +302,12 @@ namespace ldso {
                     break;
                 }
 
+                double args[9] = {
+                    so3_r_log[0], so3_r_log[1], so3_r_log[2], t[0], t[1], t[2], r2new_aff[0], r2new_aff[1], new_idepth
+                };
+
+                ceres::CostFunction *cost_function = new ceres::AutoDiffCostFunction<PHOTOMETRIC_COST, 1, 9>(new PHOTOMETRIC_COST(wl, hl, K[lvl], Ki[lvl], colorRef, colorNew, point->u, point->v)); 
+                problem.AddResidualBlock(cost_function, NULL, args);
 
                 float residual = hitColor[0] - r2new_aff[0] * rlR - r2new_aff[1];
                 float hw = fabs(residual) < setting_huberTH ? 1 : setting_huberTH / fabs(residual);

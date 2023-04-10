@@ -13,9 +13,9 @@ endif()
 
 # C++ standard
 if(${CMAKE_VERSION} VERSION_LESS "3.2.0")
-  set( CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS}" )
+  set( CMAKE_CXX_FLAGS "-std=c++14 ${CMAKE_CXX_FLAGS}" )
 else()
-  set(CMAKE_CXX_STANDARD 11)
+  set(CMAKE_CXX_STANDARD 14)
   set(CMAKE_CXX_STANDARD_REQUIRED ON)
   set(CMAKE_CXX_EXTENSIONS OFF)
 endif()
@@ -32,6 +32,7 @@ find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(Glog REQUIRED)
 find_package(Pangolin REQUIRED)
+find_package(Ceres REQUIRED)
 
 # optional libs
 find_package(LibZip QUIET)
@@ -71,6 +72,7 @@ set( THIRD_PARTY_LIBS
         ${PROJECT_SOURCE_DIR}/thirdparty/g2o/lib/libg2o${CMAKE_SHARED_LIBRARY_SUFFIX}
         ${PROJECT_SOURCE_DIR}/thirdparty/DBoW3/build/src/libDBoW3${CMAKE_SHARED_LIBRARY_SUFFIX}
         ${LIBZIP_LIBRARY}
+        ${CERES_LIBRARIES}
 )
 
 add_subdirectory(src)
